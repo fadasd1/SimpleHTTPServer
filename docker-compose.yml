@@ -1,0 +1,28 @@
+services:
+  dummyDB:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: fadasd
+      POSTGRES_PASSWORD: 1337
+      POSTGRES_DB: dummyDB
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+  api:
+    build: ./simpleHTTPServer
+    container_name: go_api
+    ports:
+      - "8080:8080"
+    depends_on:
+      - dummyDB
+
+  client:
+    build: ./client
+    depends_on:
+      - api
+      
+volumes:
+  pgdata:
