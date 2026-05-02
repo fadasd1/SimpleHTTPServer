@@ -28,7 +28,7 @@ func main() {
 
 	http.HandleFunc("/books/id/", h.GetBookByIDHandler)
 	http.HandleFunc("/books/get", h.GetBooksHandler)
-	http.HandleFunc("books/create", h.CreateBookHandler)
+	http.HandleFunc("/books/create", h.CreateBookHandler)
 
 	log.Println("API running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
