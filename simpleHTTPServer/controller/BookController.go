@@ -1,35 +1,53 @@
 package controller
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"simpleHTTPServer/apperror"
 	"simpleHTTPServer/dto"
-	"simpleHTTPServer/usecase"
-	"strconv"
-	"strings"
+	"simpleHTTPServer/entity"
 )
 
-type BookHandler struct {
-	useCase *usecase.BookUseCase
+type BookUseCase interface {
+	GetBookByID(ctx context.Context, id string) (*entity.Book, error)
+	CreateBook(ctx context.Context, request dto.CreateBookRequest) (string, error)
+	GetBooks(ctx context.Context, filter dto.BookFilter) ([]entity.Book, error)
 }
 
-func NewBookHandler(uc *usecase.BookUseCase) *BookHandler {
+type BookHandler struct {
+	useCase BookUseCase
+}
+
+func NewBookHandler(uc BookUseCase) *BookHandler {
 	return &BookHandler{useCase: uc}
 }
 
+func httpError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, apperror.ErrNotFound):
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case errors.Is(err, apperror.ErrAlreadyExists):
+		http.Error(w, err.Error(), http.StatusConflict)
+	case errors.Is(err, apperror.ErrInvalidInput):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	default:
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+}
+
 func (h *BookHandler) GetBooksHandler(w http.ResponseWriter, r *http.Request) {
-	filter := dto.BookFilter{
-		Page:     r.URL.Query().Get("page"),
-		Limit:    r.URL.Query().Get("limit"),
-		AuthorID: r.URL.Query().Get("author_id"),
-		MinPrice: r.URL.Query().Get("min_price"),
-		MaxPrice: r.URL.Query().Get("max_price"),
-		InStock:  r.URL.Query().Get("in_stock"),
+	var filter dto.BookFilter
+	if err := json.NewDecoder(r.Body).Decode(&filter); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
 	}
 
-	books, err := h.useCase.GetBooks(filter)
+	books, err := h.useCase.GetBooks(r.Context(), filter)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err)
 		return
 	}
 
@@ -41,15 +59,15 @@ func (h *BookHandler) GetBooksHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BookHandler) GetBookByIDHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/books/id/")
-	if idStr == "" {
+	id := r.PathValue("id")
+	if id == "" {
 		http.Error(w, "missing id", http.StatusBadRequest)
 		return
 	}
 
-	book, err := h.useCase.GetBookByID(idStr)
+	book, err := h.useCase.GetBookByID(r.Context(), id)
 	if err != nil {
-		http.Error(w, "book not found", http.StatusNotFound)
+		httpError(w, err)
 		return
 	}
 
@@ -58,39 +76,18 @@ func (h *BookHandler) GetBookByIDHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *BookHandler) CreateBookHandler(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-
-	authorID, err := strconv.Atoi(query.Get("author_id"))
-	if err != nil {
-		http.Error(w, "invalid author_id", http.StatusBadRequest)
+	var request dto.CreateBookRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	price, err := strconv.ParseFloat(query.Get("price"), 64)
+	msg, err := h.useCase.CreateBook(r.Context(), request)
 	if err != nil {
-		http.Error(w, "invalid price", http.StatusBadRequest)
+		httpError(w, err)
 		return
 	}
 
-	stock, err := strconv.Atoi(query.Get("stock"))
-	if err != nil {
-		http.Error(w, "invalid stock", http.StatusBadRequest)
-		return
-	}
-
-	request := dto.CreateBookRequest{
-		Title:    query.Get("title"),
-		AuthorID: authorID,
-		Price:    price,
-		Stock:    stock,
-	}
-
-	msg, err := h.useCase.CreateBook(request)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated) // 201 Created
+	w.WriteHeader(http.StatusCreated)
 	fmt.Fprintln(w, msg)
 }

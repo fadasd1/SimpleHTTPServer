@@ -1,38 +1,51 @@
 package usecase
 
 import (
+	"context"
+	"fmt"
 	"simpleHTTPServer/dto"
 	"simpleHTTPServer/entity"
 )
 
 type BookRepository interface {
-	GetByID(id string) (*entity.Book, error)
-	CreateBook(request entity.Book) (string, error)
-	GetBooks(filter dto.BookFilter) ([]entity.Book, error)
+	GetByID(ctx context.Context, id string) (*entity.Book, error)
+	CreateBook(ctx context.Context, request entity.Book) (string, error)
+	GetBooks(ctx context.Context, filter dto.BookFilter) ([]entity.Book, error)
 }
 
 type BookUseCase struct {
 	repo BookRepository
 }
 
-// validation should happen in this layer but since task is small in scope I skip
 func NewBookUseCase(repo BookRepository) *BookUseCase {
 	return &BookUseCase{repo: repo}
 }
 
-func (uc *BookUseCase) GetBookByID(id string) (*entity.Book, error) {
-	return uc.repo.GetByID(id)
+func (uc *BookUseCase) GetBookByID(ctx context.Context, id string) (*entity.Book, error) {
+	book, err := uc.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("GetBookByID: %w", err)
+	}
+	return book, nil
 }
 
-func (uc *BookUseCase) CreateBook(request dto.CreateBookRequest) (string, error) {
-	return uc.repo.CreateBook(entity.Book{
+func (uc *BookUseCase) CreateBook(ctx context.Context, request dto.CreateBookRequest) (string, error) {
+	msg, err := uc.repo.CreateBook(ctx, entity.Book{
 		Title:    request.Title,
 		AuthorID: request.AuthorID,
 		Price:    request.Price,
 		Stock:    request.Stock,
 	})
+	if err != nil {
+		return "", fmt.Errorf("CreateBook: %w", err)
+	}
+	return msg, nil
 }
 
-func (uc *BookUseCase) GetBooks(filter dto.BookFilter) ([]entity.Book, error) {
-	return uc.repo.GetBooks(filter)
+func (uc *BookUseCase) GetBooks(ctx context.Context, filter dto.BookFilter) ([]entity.Book, error) {
+	books, err := uc.repo.GetBooks(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("GetBooks: %w", err)
+	}
+	return books, nil
 }

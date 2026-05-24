@@ -1,46 +1,56 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"simpleHTTPServer/apperror"
 	"simpleHTTPServer/dto"
 	"simpleHTTPServer/entity"
 	"strconv"
 )
 
-type BookRepository struct {
-	db *sql.DB
+type DB interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
-func NewBookRepository(db *sql.DB) *BookRepository {
+type BookRepository struct {
+	db DB
+}
+
+func NewBookRepository(db DB) *BookRepository {
 	return &BookRepository{db: db}
 }
 
-func (r *BookRepository) GetByID(id string) (*entity.Book, error) {
-	var b entity.Book
-	err := r.db.QueryRow(`SELECT id, title, author_id, price, stock FROM books WHERE id = $1`, id).
-		Scan(&b.ID, &b.Title, &b.AuthorID, &b.Price, &b.Stock)
+func (r *BookRepository) GetByID(ctx context.Context, id string) (*entity.Book, error) {
+	book := &entity.Book{}
+	err := r.db.QueryRowContext(ctx, `SELECT id, title, author_id, price, stock FROM books WHERE id = $1`, id).
+		Scan(&book.ID, &book.Title, &book.AuthorID, &book.Price, &book.Stock)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf(
+				"book with id %s: %w", id, apperror.ErrNotFound)
+		}
+		return nil, fmt.Errorf("GetByID query: %w", apperror.ErrInternal)
 	}
-	return &b, err
+	return book, nil
 }
 
-func (r *BookRepository) CreateBook(request entity.Book) (string, error) {
-
-	_, err := r.db.Exec(`
-INSERT INTO books (title, author_id, price, stock)
-VALUES ($1, $2, $3, $4)
-`, request.Title, request.AuthorID, request.Price, request.Stock)
-
+func (r *BookRepository) CreateBook(ctx context.Context, request entity.Book) (string, error) {
+	_, err := r.db.ExecContext(ctx, `
+        INSERT INTO books (title, author_id, price, stock)
+        VALUES ($1, $2, $3, $4)
+    `, request.Title, request.AuthorID, request.Price, request.Stock)
 	if err != nil {
-		return "error", err
+		return "", fmt.Errorf("CreateBook query: %w", apperror.ErrInternal)
 	}
-	return "success", err
+	return "book created successfully", nil
 }
 
-func (r *BookRepository) GetBooks(filter dto.BookFilter) ([]entity.Book, error) {
-
+func (r *BookRepository) GetBooks(ctx context.Context, filter dto.BookFilter) ([]entity.Book, error) {
 	query := `SELECT id, title, author_id, price, stock FROM books WHERE 1=1`
 
 	args := make([]any, 0)
@@ -77,26 +87,23 @@ func (r *BookRepository) GetBooks(filter dto.BookFilter) ([]entity.Book, error) 
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argID, argID+1)
 	args = append(args, limit, offset)
 
-	rows, err := r.db.Query(query, args...) // The "..." unpacks the slice into separate arguments
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetBooks query: %w", apperror.ErrInternal)
 	}
 	defer rows.Close()
+
 	books := make([]entity.Book, 0)
-
 	for rows.Next() {
-		var id, authorID, stock int
-		var title string
-		var price float64
-
-		err := rows.Scan(&id, &title, &authorID, &price, &stock)
-		if err != nil {
-			return nil, err
+		var b entity.Book
+		if err := rows.Scan(&b.ID, &b.Title, &b.AuthorID, &b.Price, &b.Stock); err != nil {
+			return nil, fmt.Errorf("GetBooks scan: %w", apperror.ErrInternal)
 		}
-		book := entity.Book{ID: id, Title: title, AuthorID: authorID, Price: price, Stock: stock}
+		books = append(books, b)
+	}
 
-		books = append(books, book)
-
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetBooks rows: %w", apperror.ErrInternal)
 	}
 
 	return books, nil
