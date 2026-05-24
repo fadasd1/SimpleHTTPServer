@@ -9,7 +9,7 @@ import (
 
 type BookRepository interface {
 	GetByID(ctx context.Context, id string) (*entity.Book, error)
-	CreateBook(ctx context.Context, request entity.Book) (string, error)
+	CreateBook(ctx context.Context, request dto.CreateBookRequest) (string, error)
 	GetBooks(ctx context.Context, filter dto.BookFilter) ([]entity.Book, error)
 }
 
@@ -30,12 +30,7 @@ func (uc *BookUseCase) GetBookByID(ctx context.Context, id string) (*entity.Book
 }
 
 func (uc *BookUseCase) CreateBook(ctx context.Context, request dto.CreateBookRequest) (string, error) {
-	msg, err := uc.repo.CreateBook(ctx, entity.Book{
-		Title:    request.Title,
-		AuthorID: request.AuthorID,
-		Price:    request.Price,
-		Stock:    request.Stock,
-	})
+	msg, err := uc.repo.CreateBook(ctx, request)
 	if err != nil {
 		return "", fmt.Errorf("CreateBook: %w", err)
 	}

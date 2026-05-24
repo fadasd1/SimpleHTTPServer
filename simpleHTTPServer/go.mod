@@ -2,7 +2,10 @@ module simpleHTTPServer
 
 go 1.26
 
-require github.com/jackc/pgx/v5 v5.9.2
+require (
+	github.com/jackc/pgx/v5 v5.9.2
+	github.com/pashagolub/pgxmock/v2 v2.12.0
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect

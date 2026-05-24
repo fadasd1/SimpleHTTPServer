@@ -1,28 +1,26 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"log"
 	"net/http"
 	"simpleHTTPServer/controller"
 	"simpleHTTPServer/repository"
 	"simpleHTTPServer/usecase"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
-	var db *sql.DB
-	var err error
-	connStr := "postgres://fadasd:1337@dummyDB:5432/dummyDB?sslmode=disable"
-
-	db, err = sql.Open("pgx", connStr)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://fadasd:1337@dummyDB:5432/dummyDB?sslmode=disable")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("cannot connect to database: ", err)
 	}
-	defer db.Close()
+	defer pool.Close()
 
-	repoConnection := repository.NewBookRepository(db)
+	repoConnection := repository.NewBookRepository(pool)
+
 	uc := usecase.NewBookUseCase(repoConnection)
 	h := controller.NewBookHandler(uc)
 

@@ -1,20 +1,23 @@
+// repository/book_repository.go
 package repository
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"simpleHTTPServer/apperror"
 	"simpleHTTPServer/dto"
 	"simpleHTTPServer/entity"
 	"strconv"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type DB interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRow(ctx context.Context, query string, args ...any) pgx.Row
+	Exec(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, query string, args ...any) (pgx.Rows, error)
 }
 
 type BookRepository struct {
@@ -27,20 +30,19 @@ func NewBookRepository(db DB) *BookRepository {
 
 func (r *BookRepository) GetByID(ctx context.Context, id string) (*entity.Book, error) {
 	book := &entity.Book{}
-	err := r.db.QueryRowContext(ctx, `SELECT id, title, author_id, price, stock FROM books WHERE id = $1`, id).
+	err := r.db.QueryRow(ctx, `SELECT id, title, author_id, price, stock FROM books WHERE id = $1`, id).
 		Scan(&book.ID, &book.Title, &book.AuthorID, &book.Price, &book.Stock)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf(
-				"book with id %s: %w", id, apperror.ErrNotFound)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("book with id %s: %w", id, apperror.ErrNotFound)
 		}
 		return nil, fmt.Errorf("GetByID query: %w", apperror.ErrInternal)
 	}
 	return book, nil
 }
 
-func (r *BookRepository) CreateBook(ctx context.Context, request entity.Book) (string, error) {
-	_, err := r.db.ExecContext(ctx, `
+func (r *BookRepository) CreateBook(ctx context.Context, request dto.CreateBookRequest) (string, error) {
+	_, err := r.db.Exec(ctx, `
         INSERT INTO books (title, author_id, price, stock)
         VALUES ($1, $2, $3, $4)
     `, request.Title, request.AuthorID, request.Price, request.Stock)
@@ -87,7 +89,7 @@ func (r *BookRepository) GetBooks(ctx context.Context, filter dto.BookFilter) ([
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argID, argID+1)
 	args = append(args, limit, offset)
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("GetBooks query: %w", apperror.ErrInternal)
 	}
